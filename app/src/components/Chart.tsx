@@ -7,7 +7,7 @@
 
 import { View, StyleSheet } from 'react-native';
 import { Canvas, Path, Skia, LinearGradient, vec, Circle } from '@shopify/react-native-skia';
-import { useDerivedValue } from 'react-native-reanimated';
+import { useDerivedValue, useFrameCallback, useSharedValue, runOnJS } from 'react-native-reanimated';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { engine } from '../engine/TradingEngine';
 
@@ -16,7 +16,18 @@ import { engine } from '../engine/TradingEngine';
 // a worklet throws "[Worklets] Cannot copy value of type `TradingEngine`."
 // Pulling the individual shared values out here means every worklet below
 // captures only those, never the engine object.
-const { closes, scrubIndex, scrubActive } = engine;
+const { closes, scrubIndex, scrubActive, lastTickAt } = engine;
+
+// Real numbers for METRICS.md, not estimates: tick-to-paint is a genuine
+// cross-thread timestamp diff (JS-thread message receipt vs. the UI-thread
+// frame that actually reflects it), and scrub frame time is Reanimated's own
+// per-frame delta while the gesture is active. Pull these from `adb logcat`.
+function logTickToPaint(ms: number): void {
+  console.log(`[metrics] tick-to-paint: ${ms}ms`);
+}
+function logScrubFrame(ms: number): void {
+  console.log(`[metrics] scrub-frame-time: ${ms.toFixed(1)}ms`);
+}
 
 const HEIGHT = 220;
 const PAD = 14;
@@ -39,6 +50,19 @@ interface Props {
 }
 
 export function Chart({ width }: Props) {
+  const lastPaintedTick = useSharedValue(0);
+
+  useFrameCallback((frameInfo) => {
+    if (lastTickAt.value > 0 && lastTickAt.value !== lastPaintedTick.value) {
+      const latency = Date.now() - lastTickAt.value;
+      lastPaintedTick.value = lastTickAt.value;
+      if (latency >= 0 && latency < 5000) runOnJS(logTickToPaint)(latency);
+    }
+    if (scrubActive.value && frameInfo.timeSincePreviousFrame != null) {
+      runOnJS(logScrubFrame)(frameInfo.timeSincePreviousFrame);
+    }
+  });
+
   const isUp = useDerivedValue(() => {
     const data = closes.value;
     if (data.length < 2) return true;

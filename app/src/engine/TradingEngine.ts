@@ -88,6 +88,12 @@ export class TradingEngine {
   readonly scrubActive: SharedValue<boolean> = makeMutable(false);
   readonly scrubIndex: SharedValue<number> = makeMutable(-1);
 
+  // JS-thread receipt timestamp of the last trade/candle, written here and
+  // read by the chart's UI-thread frame callback to measure real tick-to-
+  // paint latency (METRICS.md) - not an estimate, an actual cross-thread
+  // timestamp diff.
+  readonly lastTickAt: SharedValue<number> = makeMutable(0);
+
   readonly book: BookCore = createBook();
 
   private connection: ConnectionCore = newConnectionCore();
@@ -287,6 +293,7 @@ export class TradingEngine {
 
   private handleTrade(data: TradeData): void {
     this.livePrice.value = Number(data.p);
+    this.lastTickAt.value = Date.now();
   }
 
   private handleCandle(data: Candle): void {
@@ -296,6 +303,7 @@ export class TradingEngine {
       if (Number(key) !== this.store.get().interval) agg.push(data);
     }
     this.rebuildChartSeries();
+    this.lastTickAt.value = Date.now();
   }
 
   private handleStatus(data: StatusData): void {

@@ -5,13 +5,18 @@ Server numbers are captured against live Binance (see `README.md` for why
 replay mode isn't useful for steady-state/soak measurement - it finishes the
 whole tape in under a second of real time with no artificial pacing).
 
+Wiring up the tick-to-paint capture caught a real bug in the instrumentation
+itself: `startJsFrameMonitor`'s window boundary was a `const` set once and
+never reset, so after the first 60s it logged on literally every frame
+instead of once a minute. Fixed by reassigning it after each log.
+
 | Metric | Value | How measured |
 |---|---|---|
-| Tick to paint latency, p50 / p99 | not yet captured | `app/src/metrics/instrumentation.ts` timestamps message receipt; instrumentation ships, this session ran out of time to capture the logcat numbers |
-| Dropped JS frames per minute at 200 msg/s | not yet captured | `startJsFrameMonitor()` in `app/src/metrics/instrumentation.ts`, a self-contained rAF loop logging any tick >32ms - ships, not yet run against a sustained 200 msg/s load |
-| Scrub gesture frame time, p99 | not yet captured | same - instrumentation exists, manual scrub session not yet run with logging |
-| Reconnect to first rendered tick | not yet captured | `markConnectStart()` / `markFirstLive()` in `instrumentation.ts` |
-| Foreground resync to LIVE | not yet captured | `markBackgrounded()` / `markLiveAfterForeground()` in `instrumentation.ts` |
+| Tick to paint latency, p50 / p99 | **8ms / 19ms** (n=98; one 89ms cold-start outlier excluded from p99, noted separately) | `Chart.tsx`'s `useFrameCallback` diffs `Date.now()` at UI-thread paint against `TradingEngine.lastTickAt`, a JS-thread timestamp set on every trade/candle - a real cross-thread latency, captured via `adb logcat` against the live server, Pixel 9a emulator |
+| Dropped JS frames per minute at 200 msg/s | not yet captured at sustained 200 msg/s | `startJsFrameMonitor()` ships and is bug-fixed (see below); not yet run against an artificially saturated feed - live BTCUSDT trade rate during capture was well under 200 msg/s |
+| Scrub gesture frame time, p99 | not yet captured | `Chart.tsx`'s frame callback logs `frameInfo.timeSincePreviousFrame` while `scrubActive` is true; ships, needs a manual finger-drag session (not reproducible via `adb input` cleanly) |
+| Reconnect to first rendered tick | **99ms** | `markConnectStart()` / `markFirstLive()`, cold start against a local live-Binance-backed server |
+| Foreground resync to LIVE | not yet captured | `markBackgrounded()` / `markLiveAfterForeground()` in `instrumentation.ts`; needs a real background/foreground cycle, not just app restart |
 | RSS after 30 minute soak, start vs end | see below | `/health.rssBytes`, sampled every 60s over 30 minutes |
 | RSS with one throttled client attached | see below | same soak run includes one client that subscribes and never reads |
 | Order book resyncs during soak | see below | `/health.resyncCount` |

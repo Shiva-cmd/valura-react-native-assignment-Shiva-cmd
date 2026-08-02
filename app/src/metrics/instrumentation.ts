@@ -52,7 +52,7 @@ export function startJsFrameMonitor(windowMs = 60000): () => void {
   let last = Date.now();
   let dropped = 0;
   let frames = 0;
-  const windowStart = Date.now();
+  let windowStart = Date.now();
   let raf: ReturnType<typeof requestAnimationFrame> | null = null;
   let stopped = false;
 
@@ -68,6 +68,7 @@ export function startJsFrameMonitor(windowMs = 60000): () => void {
       console.log(`[metrics] dropped JS frames in ${windowMs}ms window: ${dropped} (of ${frames} ticks)`);
       dropped = 0;
       frames = 0;
+      windowStart = now; // was never reset, so this fired every frame after the first window
     }
     raf = requestAnimationFrame(tick);
   };
