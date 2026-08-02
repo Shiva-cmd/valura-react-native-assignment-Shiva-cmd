@@ -1,0 +1,17 @@
+{
+  "tape": "pathological.ndjson",
+  "candleWindow": [
+    1730000002000,
+    1730000028000
+  ],
+  "candleSeriesSha256": "ee1c0f0c170b4b19dcba4e7a8195f4199b0af11e11f6737042e42c906f51fd72",
+  "candleCount": 27,
+  "precisionProbe": {
+    "price": "100001.123456789012345",
+    "second": 23
+  },
+  "crossingProbe": {
+    "high": "100000.02000000",
+    "second": 25
+  }
+}

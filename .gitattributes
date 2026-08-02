@@ -1,0 +1,7 @@
+# The tape is hashed content and the verifier requires byte identical replays.
+# Never let line-ending conversion touch it, on any platform.
+*.ndjson  -text
+*.json    text eol=lf
+*.mjs     text eol=lf
+*.md      text eol=lf
+*         text=auto eol=lf

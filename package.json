@@ -1,0 +1,20 @@
+{
+  "name": "crypto-panel-starter",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Starter kit for the real-time crypto trading panel assignment: wire protocol, replay tape, and verifier.",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "serve": "node stub/server.mjs",
+    "verify": "node verify.mjs",
+    "verify:client": "node verify-client.mjs",
+    "verify:all": "node verify-all.mjs"
+  },
+  "devDependencies": {
+    "ws": "^8.18.0"
+  },
+  "clientCore": "./example-core/index.mjs"
+}
