@@ -16,5 +16,5 @@
   "devDependencies": {
     "ws": "^8.18.0"
   },
-  "clientCore": "./example-core/index.mjs"
+  "clientCore": "./core/index.mjs"
 }
