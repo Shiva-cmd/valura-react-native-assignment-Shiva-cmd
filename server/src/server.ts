@@ -362,10 +362,17 @@ export async function startServer(opts: ServerOptions): Promise<RunningServer> {
 
   await new Promise<void>((resolve) => http.listen(opts.port, resolve));
 
+  // Housekeeping only - evicts sessions disconnected long enough ago that a
+  // resume can no longer succeed anyway. Real wall-clock timing is fine here
+  // (unlike everything upstream of an outgoing frame): it never touches
+  // protocol output, only when we stop holding onto a dead session's buffer.
+  const sweepTimer = setInterval(() => registry.sweep(Date.now()), 30_000);
+
   return {
     http,
     close: () =>
       new Promise<void>((resolve, reject) => {
+        clearInterval(sweepTimer);
         wss.close();
         http.close((err) => (err ? reject(err) : resolve()));
       }),
