@@ -8,13 +8,21 @@
     "node": ">=22"
   },
   "scripts": {
-    "serve": "node stub/server.mjs",
+    "build": "tsc -p server",
+    "serve": "npm run build --silent && node server/dist/index.js",
     "verify": "node verify.mjs",
     "verify:client": "node verify-client.mjs",
-    "verify:all": "node verify-all.mjs"
+    "verify:all": "node verify-all.mjs",
+    "test": "node --test tests/"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
   },
   "devDependencies": {
-    "ws": "^8.18.0"
+    "@types/node": "^22.10.0",
+    "@types/ws": "^8.5.13",
+    "fast-check": "^3.23.0",
+    "typescript": "^5.7.0"
   },
   "clientCore": "./core/index.mjs"
 }
