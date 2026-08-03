@@ -26,7 +26,7 @@ actually engages under real backpressure rather than just in the code.
 | Metric | Value | How measured |
 |---|---|---|
 | Tick to paint latency, p50 / p99 | **8ms / 19ms** (n=98; one 89ms cold-start outlier excluded from p99, noted separately) | `Chart.tsx`'s `useFrameCallback` diffs `Date.now()` at UI-thread paint against `TradingEngine.lastTickAt`, a JS-thread timestamp set on every trade/candle - a real cross-thread latency, captured via `adb logcat` against the live server, Pixel 9a emulator |
-| Dropped JS frames per minute at 200 msg/s | not yet captured at sustained 200 msg/s | `startJsFrameMonitor()` ships and is bug-fixed (see below); not yet run against an artificially saturated feed - live BTCUSDT trade rate during capture was well under 200 msg/s |
+| Dropped JS frames per minute at 200 msg/s | **UI thread (chart/scrub): holds budget, 85% of frames at 16.7ms, 15% at 33.3ms, n=80.** **JS thread's own rAF: 5 ticks in a 60s window** (expected ~3,600) - see below | `startJsFrameMonitor()` for the JS-thread number; `Chart.tsx`'s `useFrameCallback` (`frameInfo.timeSincePreviousFrame`) for the UI-thread number; both against a purpose-built synthetic load generator, see below |
 | Scrub gesture frame time, p99 | not yet captured | `Chart.tsx`'s frame callback logs `frameInfo.timeSincePreviousFrame` while `scrubActive` is true; ships, needs a manual finger-drag session (not reproducible via `adb input` cleanly) |
 | Reconnect to first rendered tick | **99ms** | `markConnectStart()` / `markFirstLive()`, cold start against a local live-Binance-backed server |
 | Foreground resync to LIVE | not yet captured | `markBackgrounded()` / `markLiveAfterForeground()` in `instrumentation.ts`; needs a real background/foreground cycle, not just app restart |
@@ -35,7 +35,46 @@ actually engages under real backpressure rather than just in the code.
 | Order book resyncs during soak | see below | `/health.resyncCount` |
 | Snapshot requests during soak | see below | `/health.snapshotRequests` |
 
-## Server soak (live Binance, 30 minutes, one normal + one throttled client)
+## 200 msg/s synthetic load (B5)
+
+Live BTCUSDT traffic never reliably sustains 200 msg/s, and `--replay` mode
+has no real-time pacing by design (it drains a tape in under a second), so
+neither can produce a sustained, wall-clock-paced load to measure frame drops
+against. `tools/synthetic-load-server.mjs` is a small dev-only tool (not part
+of the shipped server, `ws` is the only dependency it uses and that's already
+budgeted) that speaks just enough of `PROTOCOL.md` - hello, snapshot, then a
+paced stream of book/trade frames - to drive the real client unmodified at a
+controlled, sustained rate. Confirmed sending ~195-200 msg/s throughout via
+its own counter.
+
+The result is two different numbers, because the architecture puts them on
+two different threads on purpose:
+
+- **UI thread (the chart itself, via `Chart.tsx`'s `useFrameCallback`,
+  Reanimated shared values, Skia)**: stays close to the 60fps budget under
+  the full 200 msg/s load - 68 of 80 sampled frames at exactly 16.7ms, the
+  other 12 at 33.3ms (one dropped frame, recovered by the next), n=80. This
+  is the number the "no `setState` per tick" architecture was built to
+  protect, and it holds.
+- **JS thread (React Native's own message loop - WebSocket `onmessage`,
+  JSON parsing, `Store.set()`, React reconciliation)**: does not hold.
+  `startJsFrameMonitor()` runs its own independent `requestAnimationFrame`
+  loop purely on the JS thread as a contention probe; under this load it
+  logged **5 ticks in a 60-second window** where an unloaded thread would
+  log roughly 3,600. Cross-thread tick-to-paint latency (JS receipt to UI
+  paint) correspondingly widened from the live-feed baseline's 8ms/19ms
+  (p50/p99) to a 1-47ms spread with a 160ms outlier, n=30.
+
+Root cause, not just a symptom: `TradePanel`'s `estimateFill` recomputation
+is coupled to every `bookVersion` bump (documented in `TradePanel.tsx`), which
+is correct and cheap at the live feed's real rate (~10 book deltas/sec) but
+becomes ~160 recomputations/sec at this synthetic load - the actual JS-thread
+cost, not the chart itself. The honest fix, not yet made under time pressure:
+decouple the estimate's refresh rate from the raw delta rate (e.g. throttle
+it to something like 10Hz, since no human reads a fill estimate at 160Hz
+anyway) rather than recomputing on every message.
+
+
 
 Started via a script that spawns `server/dist/index.js` against live Binance,
 attaches one client that reads normally and one that subscribes and never
