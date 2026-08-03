@@ -6,7 +6,7 @@
 //
 // No order submission. The estimate is the point.
 
-import { useMemo, useState } from 'react';
+import { memo, useMemo, useState } from 'react';
 import { View, Text, TextInput, Pressable, StyleSheet } from 'react-native';
 import { estimateFill } from '../../../core/index.mjs';
 import { engine } from '../engine/TradingEngine';
@@ -25,6 +25,9 @@ export function TradePanel() {
   // bookVersion isn't read in the body; it's a dependency purely to force
   // recomputation whenever the live book mutates, since estimateFill reads
   // mutable state off `engine.book` rather than a value React can diff.
+  // Note this means TradePanel's own function body re-runs on every book
+  // tick - that's necessary here, but SideSelector below is memoized so
+  // that re-run doesn't also re-render the Buy/Sell buttons.
   const estimate = useMemo(() => {
     if (!/^\d*(\.\d*)?$/.test(quantity) || quantity === '' || quantity === '.') return null;
     try {
@@ -36,22 +39,7 @@ export function TradePanel() {
 
   return (
     <View style={styles.container}>
-      <View style={styles.sideRow}>
-        <Pressable
-          disabled={disabled}
-          onPress={() => setSide('buy')}
-          style={[styles.sideButton, side === 'buy' && styles.buyActive, disabled && styles.disabled]}
-        >
-          <Text style={styles.sideLabel}>Buy</Text>
-        </Pressable>
-        <Pressable
-          disabled={disabled}
-          onPress={() => setSide('sell')}
-          style={[styles.sideButton, side === 'sell' && styles.sellActive, disabled && styles.disabled]}
-        >
-          <Text style={styles.sideLabel}>Sell</Text>
-        </Pressable>
-      </View>
+      <SideSelector side={side} disabled={disabled} onSelect={setSide} />
 
       <View style={styles.qtyRow}>
         <Text style={styles.qtyLabel}>Quantity (BTC)</Text>
@@ -80,6 +68,37 @@ export function TradePanel() {
     </View>
   );
 }
+
+// Isolated so it only re-renders when side/disabled actually change, not on
+// every bookVersion bump that TradePanel's own body re-runs for.
+const SideSelector = memo(function SideSelector({
+  side,
+  disabled,
+  onSelect,
+}: {
+  readonly side: Side;
+  readonly disabled: boolean;
+  readonly onSelect: (side: Side) => void;
+}) {
+  return (
+    <View style={styles.sideRow}>
+      <Pressable
+        disabled={disabled}
+        onPress={() => onSelect('buy')}
+        style={[styles.sideButton, side === 'buy' && styles.buyActive, disabled && styles.disabled]}
+      >
+        <Text style={styles.sideLabel}>Buy</Text>
+      </Pressable>
+      <Pressable
+        disabled={disabled}
+        onPress={() => onSelect('sell')}
+        style={[styles.sideButton, side === 'sell' && styles.sellActive, disabled && styles.disabled]}
+      >
+        <Text style={styles.sideLabel}>Sell</Text>
+      </Pressable>
+    </View>
+  );
+});
 
 function Row({ label, value }: { readonly label: string; readonly value: string }) {
   return (
