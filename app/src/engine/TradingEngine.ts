@@ -101,7 +101,7 @@ export class TradingEngine {
   // price's own appearance, not just a separate status label.
   readonly isStale: SharedValue<boolean> = makeMutable(false);
 
-  readonly book: BookCore = createBook();
+  book: BookCore = createBook();
 
   private connection: ConnectionCore = newConnectionCore();
 
@@ -135,6 +135,13 @@ export class TradingEngine {
   hardReset(): void {
     this.closeSocketQuiet();
     this.connection = newConnectionCore();
+    // The book's sequence tracking must restart with the connection: the new
+    // session's `hello`/`snapshot` arrives with a fresh, low `seq`, and the
+    // old book's `expectedSeq` (built up over the previous session) would
+    // otherwise flag it as a gap - triggering another hardReset(), which hits
+    // the same problem again, forever. This is what backgrounding then
+    // foregrounding the app actually did before this fix.
+    this.book = createBook();
     this.store.set({ connState: 'connecting' });
     markConnectStart();
     this.openSocket();
@@ -233,12 +240,25 @@ export class TradingEngine {
     const state = this.connection.send({ type: 'frame', frame: envelope, now: Date.now() });
     this.syncConnState(state);
 
+    // The transport `seq` is a single counter across every frame type on this
+    // connection - trade, candle, and status frames advance it just like book
+    // deltas do (CLIENT_CONTRACT.md). book.apply() must see every envelope to
+    // track that contiguity; feeding it only 'snapshot'/'book' frames made it
+    // see a "gap" the moment any trade/candle frame was interleaved between
+    // two book deltas - which live BTCUSDT traffic does constantly - and each
+    // one triggered a needless hardReset(), producing a rapid reconnect loop.
+    const bookResult = this.book.apply(envelope);
+    if (bookResult.gap) {
+      this.hardReset();
+      return;
+    }
+
     switch (envelope.type) {
       case 'snapshot':
         this.handleSnapshot(envelope);
         break;
       case 'book':
-        this.handleBookDelta(envelope);
+        this.bumpBookVersion();
         break;
       case 'trade':
         this.handleTrade(envelope.data as TradeData);
@@ -265,10 +285,8 @@ export class TradingEngine {
   }
 
   private handleSnapshot(envelope: Envelope): void {
-    // The book needs the real envelope (seq included) - CLIENT_CONTRACT.md:
-    // transport `seq` is how gap detection works, and a snapshot resets the
-    // expected sequence to this frame's seq + 1 for every frame after it.
-    this.book.apply(envelope);
+    // book.apply() already ran in handleMessage (a snapshot resets its
+    // expected sequence to this frame's seq + 1 for every frame after it).
     const data = envelope.data as SnapshotData;
     // A snapshot arrives both on first connect and on every resync. Its
     // `candles` is always the trailing 300s, so re-pushing it into
@@ -284,18 +302,6 @@ export class TradingEngine {
     this.rebuildChartSeries();
     const last = data.candles.at(-1);
     if (last) this.livePrice.value = Number(last.c);
-    this.bumpBookVersion();
-  }
-
-  private handleBookDelta(envelope: Envelope): void {
-    const result = this.book.apply(envelope);
-    if (result.gap) {
-      // Our own session's frame numbering broke - vanishingly rare given the
-      // server's contiguous-seq guarantee, but if it happens the book is no
-      // longer real (per CLIENT_CONTRACT.md) and limping on is not an option.
-      this.hardReset();
-      return;
-    }
     this.bumpBookVersion();
   }
 
