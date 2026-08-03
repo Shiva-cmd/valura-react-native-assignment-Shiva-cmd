@@ -10,12 +10,13 @@ import { useMemo, useState } from 'react';
 import { View, Text, TextInput, Pressable, StyleSheet } from 'react-native';
 import { estimateFill } from '../../../core/index.mjs';
 import { engine } from '../engine/TradingEngine';
-import { useEngineState } from '../engine/useEngineState';
+import { useEngineSelector } from '../engine/useEngineState';
 
 type Side = 'buy' | 'sell';
 
 export function TradePanel() {
-  const { connState, bookVersion } = useEngineState();
+  const connState = useEngineSelector((s) => s.connState);
+  const bookVersion = useEngineSelector((s) => s.bookVersion);
   const [side, setSide] = useState<Side>('buy');
   const [quantity, setQuantity] = useState('0.01000000');
 

@@ -5,7 +5,7 @@
 
 import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { engine, type Interval } from '../engine/TradingEngine';
-import { useEngineState } from '../engine/useEngineState';
+import { useEngineSelector } from '../engine/useEngineState';
 
 const OPTIONS: { label: string; value: Interval }[] = [
   { label: '1s', value: 1000 },
@@ -14,7 +14,7 @@ const OPTIONS: { label: string; value: Interval }[] = [
 ];
 
 export function IntervalSwitcher() {
-  const { interval } = useEngineState();
+  const interval = useEngineSelector((s) => s.interval);
 
   return (
     <View style={styles.row}>

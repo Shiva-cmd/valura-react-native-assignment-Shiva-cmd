@@ -4,7 +4,7 @@
 // the screen when it isn't green.
 
 import { View, Text, StyleSheet } from 'react-native';
-import { useEngineState } from '../engine/useEngineState';
+import { useEngineSelector } from '../engine/useEngineState';
 
 const LABEL: Record<string, string> = {
   connecting: 'CONNECTING',
@@ -21,7 +21,8 @@ const COLOR: Record<string, string> = {
 };
 
 export function ConnectionBanner() {
-  const { connState, lastError } = useEngineState();
+  const connState = useEngineSelector((s) => s.connState);
+  const lastError = useEngineSelector((s) => s.lastError);
   const color = COLOR[connState] ?? '#8E8E93';
 
   return (
