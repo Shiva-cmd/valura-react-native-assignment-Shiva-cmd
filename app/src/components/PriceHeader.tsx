@@ -11,11 +11,12 @@ import { engine } from '../engine/TradingEngine';
 // See Chart.tsx: worklets can only capture plain data/SharedValues, not the
 // TradingEngine instance itself, so pull the shared values out at module
 // scope rather than referencing `engine.xxx` inside a worklet body.
-const { closes, scrubIndex, scrubActive, livePrice } = engine;
+const { closes, scrubIndex, scrubActive, livePrice, isStale } = engine;
 
 const HEIGHT = 76;
 const UP_COLOR = '#12C48B';
 const DOWN_COLOR = '#FF5B5B';
+const STALE_COLOR = '#5A5A5C';
 
 const priceFont = matchFont({
   fontFamily: Platform.select({ ios: 'Helvetica Neue', android: 'sans-serif', default: 'sans-serif' }),
@@ -69,12 +70,13 @@ export function PriceHeader({ width }: Props) {
     return (data[idx] ?? 0) >= (data[0] ?? 0);
   });
 
-  const changeColor = useDerivedValue(() => (isUp.value ? UP_COLOR : DOWN_COLOR));
+  const changeColor = useDerivedValue(() => (isStale.value ? STALE_COLOR : isUp.value ? UP_COLOR : DOWN_COLOR));
+  const priceColor = useDerivedValue(() => (isStale.value ? STALE_COLOR : 'white'));
 
   return (
     <View style={[styles.container, { width, height: HEIGHT }]}>
       <Canvas style={{ width, height: HEIGHT }}>
-        <SkiaText x={2} y={38} text={priceText} font={priceFont} color="white" />
+        <SkiaText x={2} y={38} text={priceText} font={priceFont} color={priceColor} />
         <SkiaText x={2} y={62} text={changeText} font={changeFont} color={changeColor} />
       </Canvas>
     </View>

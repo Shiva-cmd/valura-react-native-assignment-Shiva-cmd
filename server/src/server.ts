@@ -336,6 +336,16 @@ export async function startServer(opts: ServerOptions): Promise<RunningServer> {
   const wss = new WebSocketServer({ server: http, path: '/stream' });
 
   wss.on('connection', (ws: WebSocket) => {
+    // A slow/backpressured client's socket can error asynchronously (e.g.
+    // ETIMEDOUT once the OS gives up on an unacknowledged write). An
+    // EventEmitter's unhandled 'error' event is fatal to the whole process
+    // by Node convention - without this listener, one bad client takes down
+    // every other client's session too. `close` still follows and does the
+    // real cleanup; this only stops the crash.
+    ws.on('error', () => {
+      /* handled by the close listener below */
+    });
+
     ws.on('message', (raw: Buffer) => {
       let msg: unknown;
       try {

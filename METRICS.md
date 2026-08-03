@@ -10,6 +10,19 @@ itself: `startJsFrameMonitor`'s window boundary was a `const` set once and
 never reset, so after the first 60s it logged on literally every frame
 instead of once a minute. Fixed by reassigning it after each log.
 
+Building a genuinely throttled test client (the original soak's "slow"
+client only skipped its own `onmessage` handler - the OS socket still
+drained normally, so it never actually exercised backpressure) surfaced a
+real crash: with the client's underlying `net.Socket` paused via
+`.pause()`, the server hit an unhandled `'error'` event on that WebSocket
+connection and took down the **entire process** - every client, not just
+the slow one. Node treats an unhandled `'error'` event on an EventEmitter
+as fatal by convention, and `wss.on('connection', ...)` never registered
+one. Fixed with a one-line listener in `server.ts`; the retry then ran
+clean for the full 3 minutes with `droppedFrames: 36` and zero
+disconnects, confirming the conflate-then-shed policy in DECISIONS.md #2
+actually engages under real backpressure rather than just in the code.
+
 | Metric | Value | How measured |
 |---|---|---|
 | Tick to paint latency, p50 / p99 | **8ms / 19ms** (n=98; one 89ms cold-start outlier excluded from p99, noted separately) | `Chart.tsx`'s `useFrameCallback` diffs `Date.now()` at UI-thread paint against `TradingEngine.lastTickAt`, a JS-thread timestamp set on every trade/candle - a real cross-thread latency, captured via `adb logcat` against the live server, Pixel 9a emulator |
@@ -18,7 +31,7 @@ instead of once a minute. Fixed by reassigning it after each log.
 | Reconnect to first rendered tick | **99ms** | `markConnectStart()` / `markFirstLive()`, cold start against a local live-Binance-backed server |
 | Foreground resync to LIVE | not yet captured | `markBackgrounded()` / `markLiveAfterForeground()` in `instrumentation.ts`; needs a real background/foreground cycle, not just app restart |
 | RSS after 30 minute soak, start vs end | see below | `/health.rssBytes`, sampled every 60s over 30 minutes |
-| RSS with one throttled client attached | see below | same soak run includes one client that subscribes and never reads |
+| RSS with one throttled client attached | **61MB → 132MB over 3 min, `droppedFrames: 36`, 0 disconnects** | genuinely throttled client (raw `net.Socket.pause()`, not just an app that ignores messages - see note below), sampled every 20s over 3 minutes |
 | Order book resyncs during soak | see below | `/health.resyncCount` |
 | Snapshot requests during soak | see below | `/health.snapshotRequests` |
 

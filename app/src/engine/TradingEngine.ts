@@ -94,6 +94,13 @@ export class TradingEngine {
   // timestamp diff.
   readonly lastTickAt: SharedValue<number> = makeMutable(0);
 
+  // Mirrors connState === 'stale' into UI-thread-readable form (B3): the
+  // price header is Skia-drawn, so it can't react to React state directly.
+  // A trading UI that keeps showing a confident price after the feed died
+  // is worse than one showing nothing, so this has to actually change the
+  // price's own appearance, not just a separate status label.
+  readonly isStale: SharedValue<boolean> = makeMutable(false);
+
   readonly book: BookCore = createBook();
 
   private connection: ConnectionCore = newConnectionCore();
@@ -206,6 +213,7 @@ export class TradingEngine {
   }
 
   private syncConnState(state: ConnState): void {
+    this.isStale.value = state === 'stale';
     if (state === this.store.get().connState) return;
     this.store.set({ connState: state });
     if (state === 'live') {
