@@ -23,13 +23,23 @@ clean for the full 3 minutes with `droppedFrames: 36` and zero
 disconnects, confirming the conflate-then-shed policy in DECISIONS.md #2
 actually engages under real backpressure rather than just in the code.
 
+Capturing foreground-resync-to-LIVE surfaced a real bug in the metric itself
+before it ever produced a usable number: `markBackgrounded()` stored its
+timestamp in `foregroundedAt`, so the later delta measured "time since the
+app went to the *background*" - including however long it sat there - not
+the actual resync time after returning. A first run showed 17,240ms for a
+10-second background, which made the bug obvious. Fixed by adding a
+separate `markForegrounded()`, called at the moment the app actually
+returns to the foreground rather than when it leaves it; two clean
+background/foreground cycles then measured 201ms and 447ms.
+
 | Metric | Value | How measured |
 |---|---|---|
 | Tick to paint latency, p50 / p99 | **8ms / 19ms** (n=98; one 89ms cold-start outlier excluded from p99, noted separately) | `Chart.tsx`'s `useFrameCallback` diffs `Date.now()` at UI-thread paint against `TradingEngine.lastTickAt`, a JS-thread timestamp set on every trade/candle - a real cross-thread latency, captured via `adb logcat` against the live server, Pixel 9a emulator |
 | Dropped JS frames per minute at 200 msg/s | **UI thread (chart/scrub): holds budget, 85% of frames at 16.7ms, 15% at 33.3ms, n=80.** **JS thread's own rAF: 5 ticks in a 60s window** (expected ~3,600) - see below | `startJsFrameMonitor()` for the JS-thread number; `Chart.tsx`'s `useFrameCallback` (`frameInfo.timeSincePreviousFrame`) for the UI-thread number; both against a purpose-built synthetic load generator, see below |
-| Scrub gesture frame time, p99 | not yet captured | `Chart.tsx`'s frame callback logs `frameInfo.timeSincePreviousFrame` while `scrubActive` is true; ships, needs a manual finger-drag session (not reproducible via `adb input` cleanly) |
+| Scrub gesture frame time, p50 / p99 | **16.7ms / ~66.7ms** (n=139; one 183.3ms outlier is the true max, not the p99) | `Chart.tsx`'s frame callback logs `frameInfo.timeSincePreviousFrame` while `scrubActive` is true, over a continuous 3s drag against the live server |
 | Reconnect to first rendered tick | **99ms** | `markConnectStart()` / `markFirstLive()`, cold start against a local live-Binance-backed server |
-| Foreground resync to LIVE | not yet captured | `markBackgrounded()` / `markLiveAfterForeground()` in `instrumentation.ts`; needs a real background/foreground cycle, not just app restart |
+| Foreground resync to LIVE | **201ms, 447ms** (two clean runs) | `markForegrounded()` / `markLiveAfterForeground()` in `instrumentation.ts`, real background (Home button) then foreground cycles - see the bug this caught, below |
 | RSS after 30 minute soak, start vs end | see below | `/health.rssBytes`, sampled every 60s over 30 minutes |
 | RSS with one throttled client attached | **61MB → 132MB over 3 min, `droppedFrames: 36`, 0 disconnects** | genuinely throttled client (raw `net.Socket.pause()`, not just an app that ignores messages - see note below), sampled every 20s over 3 minutes |
 | Order book resyncs during soak | see below | `/health.resyncCount` |

@@ -30,8 +30,16 @@ export function markFirstLive(): void {
 }
 
 export function markBackgrounded(): void {
-  milestones.foregroundedAt = Date.now();
   milestones.liveAfterForegroundAt = null;
+}
+
+// Called when the app actually returns to the foreground, not when it goes
+// to the background - markBackgrounded() used to store its timestamp in
+// `foregroundedAt` instead, so the metric below measured "time since
+// backgrounding" (including however long the app sat backgrounded) rather
+// than the actual resync time after resuming.
+export function markForegrounded(): void {
+  milestones.foregroundedAt = Date.now();
 }
 
 export function markLiveAfterForeground(): void {

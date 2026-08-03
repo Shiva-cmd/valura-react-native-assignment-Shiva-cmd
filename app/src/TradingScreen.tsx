@@ -13,7 +13,7 @@ import { Chart } from './components/Chart';
 import { IntervalSwitcher } from './components/IntervalSwitcher';
 import { TradePanel } from './components/TradePanel';
 import { RtlToggle } from './components/RtlToggle';
-import { markBackgrounded, startJsFrameMonitor } from './metrics/instrumentation';
+import { markBackgrounded, markForegrounded, startJsFrameMonitor } from './metrics/instrumentation';
 
 export function TradingScreen() {
   const { width } = useWindowDimensions();
@@ -31,6 +31,7 @@ export function TradingScreen() {
         markBackgrounded();
       }
       if (wasBackground && next === 'active') {
+        markForegrounded();
         engine.hardReset();
       }
     });

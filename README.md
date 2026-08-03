@@ -164,8 +164,10 @@ explicitly by the brief (B5) as the allowed rendering/animation primitives.
   rather say that plainly than guess at a fix that only tunes to this one
   tape. See `DECISIONS.md`.
 - **RTL (B7)**: implemented (`I18nManager.forceRTL` via the toggle in the
-  header) but only lightly exercised - I did not do a full pass checking
-  every screen element mirrors correctly under a real Arabic locale.
+  header) and visually confirmed on-device - toggling it mirrors the layout
+  correctly (Buy/Sell swap sides, the interval pills reverse order, labels
+  right-align) while numerals stay LTR and the chart itself does not mirror.
+  Not tested under a real Arabic locale/font, only the forced-RTL layout.
 - **Interval switching (B5, optional)**: wired end to end (1s/5s/1m all run
   live via `createAggregator`, switching is instant since all three have been
   aggregating the whole time), but only checked on-device for a few minutes
