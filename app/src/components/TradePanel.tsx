@@ -6,7 +6,7 @@
 //
 // No order submission. The estimate is the point.
 
-import { memo, useMemo, useState } from 'react';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, TextInput, Pressable, StyleSheet } from 'react-native';
 import { estimateFill } from '../../../core/index.mjs';
 import { engine } from '../engine/TradingEngine';
@@ -14,20 +14,50 @@ import { useEngineSelector } from '../engine/useEngineState';
 
 type Side = 'buy' | 'sell';
 
+// Recomputing estimateFill on every single bookVersion tick was measured
+// (METRICS.md, the 200msg/s synthetic load) as the actual JS-thread cost
+// under bursty book activity - not the chart, which stays on the UI thread.
+// No human reads a fill estimate at 160Hz, so cap recomputation at 10Hz
+// instead of coupling it 1:1 to the raw delta rate.
+const ESTIMATE_THROTTLE_MS = 100;
+
 export function TradePanel() {
   const connState = useEngineSelector((s) => s.connState);
   const bookVersion = useEngineSelector((s) => s.bookVersion);
   const [side, setSide] = useState<Side>('buy');
   const [quantity, setQuantity] = useState('0.01000000');
+  const [throttledVersion, setThrottledVersion] = useState(bookVersion);
+  const lastUpdateAt = useRef(0);
+  const pendingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    const now = Date.now();
+    const elapsed = now - lastUpdateAt.current;
+    if (elapsed >= ESTIMATE_THROTTLE_MS) {
+      lastUpdateAt.current = now;
+      setThrottledVersion(bookVersion);
+    } else if (!pendingTimer.current) {
+      pendingTimer.current = setTimeout(() => {
+        pendingTimer.current = null;
+        lastUpdateAt.current = Date.now();
+        setThrottledVersion(bookVersion);
+      }, ESTIMATE_THROTTLE_MS - elapsed);
+    }
+    return () => {
+      if (pendingTimer.current) {
+        clearTimeout(pendingTimer.current);
+        pendingTimer.current = null;
+      }
+    };
+  }, [bookVersion]);
 
   const disabled = connState !== 'live';
 
-  // bookVersion isn't read in the body; it's a dependency purely to force
-  // recomputation whenever the live book mutates, since estimateFill reads
-  // mutable state off `engine.book` rather than a value React can diff.
-  // Note this means TradePanel's own function body re-runs on every book
-  // tick - that's necessary here, but SideSelector below is memoized so
-  // that re-run doesn't also re-render the Buy/Sell buttons.
+  // throttledVersion isn't read in the body; it's a dependency purely to
+  // force recomputation at a bounded rate, since estimateFill reads mutable
+  // state off `engine.book` rather than a value React can diff. SideSelector
+  // below is memoized so this re-run doesn't also re-render the Buy/Sell
+  // buttons.
   const estimate = useMemo(() => {
     if (!/^\d*(\.\d*)?$/.test(quantity) || quantity === '' || quantity === '.') return null;
     try {
@@ -35,7 +65,7 @@ export function TradePanel() {
     } catch {
       return null;
     }
-  }, [side, quantity, bookVersion]);
+  }, [side, quantity, throttledVersion]);
 
   return (
     <View style={styles.container}>
